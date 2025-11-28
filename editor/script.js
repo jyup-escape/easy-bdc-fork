@@ -1,4 +1,8 @@
-import Blocks from './blocks.js';
+import { loadTemplates as loadBlockTemplates, generateBlocks } from "./blocks.js";
+import PythonGenerator, { loadTemplates as loadCodeTemplates } from "./generator.js";
+
+
+
 
 let workspace;
 const STORAGE_KEY = 'discord_bot_builder_workspace_v5';
@@ -17,8 +21,14 @@ Blockly.Blocks['custom_python_code'] = {
   },
 };
 
-const setupBlocklyEnvironment = () => {
-  // Modern Theme Definition
+const setupBlocklyEnvironment = (Blocks) => {
+  if (Blockly.common?.defineBlocks) {
+    Blockly.common.defineBlocks(Blocks);
+  }
+  Object.assign(Blockly.Blocks, Blocks);
+  Object.assign(Blockly.Python, PythonGenerator);
+  Blockly.Python.INDENT = "    ";
+
   const modernLightTheme = Blockly.Theme.defineTheme('modernLight', {
     base: Blockly.Themes.Classic,
     componentStyles: {
@@ -64,10 +74,6 @@ const setupBlocklyEnvironment = () => {
     },
   });
 
-  Blockly.Python = Blocks.Python;
-  Blockly.Blocks = Blocks.Blocks;
-  Blockly.Python.INDENT = '    ';
-
   return { modernLightTheme, modernDarkTheme };
 };
 
@@ -76,41 +82,30 @@ const html = document.documentElement;
 // --- Code Generation & UI Sync ---
 const generatePythonCode = () => {
   if (!workspace) return '';
-  let rawCode = Blockly.Python.workspaceToCode(workspace);
+  const rawCode = Blockly.Python.workspaceToCode(workspace);
 
-  // --- Event Handlers for Dynamic Components ---
-  let componentEvents = '';
-  let modalEvents = '';
+  const buttons = [];
+  const modals = [];
 
-  // Parse raw code to extract event handlers
-  const lines = rawCode.split('\n');
-  let filteredLines = [];
-  let currentEventName = null;
-  let currentEventBody = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-    if (line.includes('# BUTTON_EVENT:')) {
-      currentEventName = line.split(':')[1].trim();
-      componentEvents +=
-        componentEvents += `            if interaction.data.get('custom_id') == '${currentEventName}':\n                await on_button_${currentEventName}(interaction)\n`;
-      filteredLines.push(line); // Keep definition
-    } else if (line.includes('# MODAL_EVENT:')) {
-      currentEventName = line.split(':')[1].trim();
-      modalEvents += `            if interaction.data.get('custom_id') == '${currentEventName}':\n                await on_modal_${currentEventName}(interaction)\n`;
-      filteredLines.push(line);
-    } else {
-      filteredLines.push(line);
+  rawCode.split("\n").forEach((line) => {
+    if (line.includes("# BUTTON_EVENT:")) {
+      const name = line.split(":")[1].trim();
+      buttons.push(
+        `if interaction.data.get('custom_id') == '${name}':\n            await on_button_${name}(interaction)`
+      );
     }
-  }
+    if (line.includes("# MODAL_EVENT:")) {
+      const name = line.split(":")[1].trim();
+      modals.push(
+        `if interaction.data.get('custom_id') == '${name}':\n            await on_modal_${name}(interaction)`
+      );
+    }
+  });
 
-  rawCode = filteredLines.join('\n');
-  if (!componentEvents.trim()) componentEvents = '            pass';
+  const componentEvents = buttons.length ? buttons.join("\n            ") : "pass";
+  const modalEvents = modals.length ? modals.join("\n            ") : "pass";
 
-  if (!modalEvents.trim()) modalEvents = '            pass';
-
-  // --- Optimized Boilerplate ---
-  const boilerplate = `
+  const code = `
 # Easy Discord Bot Builderによって作成されました！ 製作：@himais0giiiin
 # Created with Easy Discord Bot Builder! created by @himais0giiiin!
 # Optimized Version
@@ -175,9 +170,18 @@ class EasyModal(discord.ui.Modal):
 async def on_interaction(interaction):
     try:
         if interaction.type == discord.InteractionType.component:
-${componentEvents}
+            ${componentEvents}
         elif interaction.type == discord.InteractionType.modal_submit:
-${modalEvents}
+            ${modalEvents}
+    except Exception as e:
+        logging.error(f"Interaction Error: {e}")
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    try:
+        synced = await bot.tree.sync()
+        print(f\"Synced {len(synced)} command(s)\")
     except Exception as e:
         print(f"Interaction Error: {e}")
 
@@ -188,11 +192,11 @@ ${rawCode}
 # --------------------------
 
 if __name__ == "__main__":
-    # Token check
-    # bot.run('TOKEN') # 実行時はここにTokenを入れてください!
-    pass
+    bot.run(os.getenv('DISCORD_TOKEN', '★ここを自分のTokenに置き換えてください★'))
+
 `;
-  return boilerplate.trim();
+
+  return code.replace(/\n{3,}/g, "\n").trim();
 };
 
 const updateLivePreview = () => {
@@ -213,9 +217,9 @@ const toggleTheme = (modernLightTheme, modernDarkTheme) => {
   }
 };
 
-const initializeApp = () => {
+const initializeApp = (Blocks) => {
   lucide.createIcons();
-  const { modernLightTheme, modernDarkTheme } = setupBlocklyEnvironment();
+  const { modernLightTheme, modernDarkTheme } = setupBlocklyEnvironment(Blocks);
 
   const blocklyDiv = document.getElementById('blocklyDiv');
   const toolbox = document.getElementById('toolbox');
@@ -465,4 +469,11 @@ const initializeApp = () => {
   });
 };
 
-window.onload = initializeApp;
+window.onload = async () => {
+  // ブロック定義と生成エンジンを非同期で取得
+  await Promise.all([loadBlockTemplates(), loadCodeTemplates()]);
+  // 取得が終わったらブロック定義を生成
+  const Blocks = generateBlocks();
+  // アプリケーションを初期化
+  initializeApp(Blocks);
+};
