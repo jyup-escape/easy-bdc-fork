@@ -231,9 +231,7 @@ const initializeApp = (Blocks) => {
   const closeModalBtn = document.getElementById('closeModalBtn');
   const codeOutput = document.getElementById('codeOutput');
   const copyCodeBtn = document.getElementById('copyCodeBtn');
-  // ダウンロードボタン
-  const downloadCodeBtn = document.getElementById("downloadCodeBtn");
-  
+
   const importBtn = document.getElementById('importBtn');
   const exportBtn = document.getElementById('exportBtn');
   const importInput = document.getElementById('importInput');
@@ -469,20 +467,6 @@ const initializeApp = (Blocks) => {
       lucide.createIcons();
     }, 2000);
   });
-  
-  downloadCodeBtn.addEventListener("click", () => {
-    const zip = new JSZip();
-    zip.file("bot-project.py", codeOutput.textContent);
-    zip.file(".env", "DISCORD_TOKEN=★ここを自分のTokenに置き換えてください★\n");
-    zip.generateAsync({ type: "blob" }).then((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `bot-project.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  });
 };
 
 window.onload = async () => {
@@ -493,5 +477,3 @@ window.onload = async () => {
   // アプリケーションを初期化
   initializeApp(Blocks);
 };
-
-window.onload = initializeApp;
